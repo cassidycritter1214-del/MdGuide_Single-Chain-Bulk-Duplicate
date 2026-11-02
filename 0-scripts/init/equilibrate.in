@@ -98,19 +98,20 @@ compute PE all pe
 compute rg poly gyration
 variable rg2 equal c_rg*c_rg
 
-# Identify first and last bead using atom IDs
 compute props all property/atom id xu yu zu
 
-compute firstx all reduce min c_props[1] c_props[2] replace 1 2
-compute firsty all reduce min c_props[1] c_props[3] replace 1 2
-compute firstz all reduce min c_props[1] c_props[4] replace 1 2
+# Coordinates of the first atom (lowest atom ID)
+compute firstx all reduce min c_props[2] c_props[1] replace 1 2
+compute firsty all reduce min c_props[3] c_props[1] replace 1 2
+compute firstz all reduce min c_props[4] c_props[1] replace 1 2
 
-compute lastx all reduce max c_props[1] c_props[2] replace 1 2
-compute lasty all reduce max c_props[1] c_props[3] replace 1 2
-compute lastz all reduce max c_props[1] c_props[4] replace 1 2
+# Coordinates of the last atom (highest atom ID)
+compute lastx all reduce max c_props[2] c_props[1] replace 1 2
+compute lasty all reduce max c_props[3] c_props[1] replace 1 2
+compute lastz all reduce max c_props[4] c_props[1] replace 1 2
 
-# End-to-end distance squared
-variable re2 equal (c_firstx-c_lastx)^2+(c_firsty-c_lasty)^2+(c_firstz-c_lastz)^2
+# Squared end-to-end distance
+variable re2 equal (c_firstx[1]-c_lastx[1])^2+(c_firsty[1]-c_lasty[1])^2+(c_firstz[1]-c_lastz[1])^2
 
 # -------------------------
 # Output files
