@@ -1,0 +1,182 @@
+# Polymer adsorption simulation
+# Run from the trial's adsorption/ directory:
+# lmp -in ../../../../0-scripts/init/polymer.in
+
+# -------------------------
+# Initialization
+# -------------------------
+
+units lj
+dimension 3
+boundary p p p
+atom_style full
+
+# -------------------------
+# Simulation parameters
+# -------------------------
+
+variable temp equal 1.0
+variable dt equal 0.005
+variable damp equal 0.5
+
+variable nsteps index 2000000
+variable langseed index 252352
+
+variable dumpfreq equal 1000
+variable rstfreq equal 100000
+
+variable zads equal 1.5
+variable rwca equal 1.12246204830937
+
+timestep ${dt}
+
+# -------------------------
+# Read equilibrated polymer
+# -------------------------
+
+read_data ../bulk/final.data
+
+group poly type 1
+
+mass * 1.0
+
+reset_timestep 0
+
+# -------------------------
+# Polymer interactions
+# -------------------------
+
+pair_style lj/cut ${rwca}
+pair_coeff * * 1.0 1.0 ${rwca}
+pair_modify shift yes
+
+bond_style harmonic
+bond_coeff 1 30.0 1.0
+
+# Exclude LJ interactions between directly bonded beads
+special_bonds lj 0.0 1.0 1.0
+
+neighbor 0.5 bin
+neigh_modify every 1 delay 0 check yes
+comm_modify cutoff 2.0
+
+# -------------------------
+# Center polymer in simulation box
+# -------------------------
+
+compute com poly com
+
+variable dx equal 0.5*(xlo+xhi)-c_com[1]
+variable dy equal 0.5*(ylo+yhi)-c_com[2]
+variable dz equal 0.5*(zlo+zhi)-c_com[3]
+
+displace_atoms poly move ${dx} ${dy} ${dz} units box
+
+# -------------------------
+# Check polymer position
+# -------------------------
+
+compute zpos poly property/atom zu
+compute zmin poly reduce min c_zpos
+compute zmax poly reduce max c_zpos
+
+run 0
+
+variable zlimlo equal max(2.5,v_zads)
+variable zlimhi equal lz-v_rwca
+
+print "Minimum polymer z: $(c_zmin)"
+print "Maximum polymer z: $(c_zmax)"
+
+if "$(c_zmin) <= ${zlimlo}" then "quit 1"
+if "$(c_zmax) >= ${zlimhi}" then "quit 1"
+
+# -------------------------
+# Introduce surface boundaries
+# -------------------------
+
+change_box all boundary p p f
+
+# Lower attractive wall
+fix wlo poly wall/lj126 zlo EDGE 1.0 1.0 2.5
+fix_modify wlo energy yes
+
+# Upper purely repulsive wall
+fix whi poly wall/lj126 zhi EDGE 1.0 1.0 ${rwca}
+fix_modify whi energy yes
+
+# -------------------------
+# Dynamics
+# -------------------------
+
+fix integrator poly nve
+fix thermostat poly langevin ${temp} ${temp} ${damp} ${langseed}
+
+# -------------------------
+# Compute polymer properties
+# -------------------------
+
+compute rg poly gyration
+
+# Contact count with adsorption surface
+variable contact atom "z < v_zads"
+compute ncont poly reduce sum v_contact
+
+# -------------------------
+# Output trajectories
+# -------------------------
+
+dump traj poly custom ${dumpfreq} dump.atom id mol type q x y z ix iy iz vx vy vz
+dump_modify traj sort id
+
+dump dcd poly dcd ${dumpfreq} dump_unwrapped.dcd
+dump_modify dcd unwrap yes
+
+# -------------------------
+# Radius of gyration output
+# -------------------------
+
+fix rgout all ave/time 1 5 5 c_rg c_rg[1] c_rg[2] c_rg[3] c_rg[4] c_rg[5] c_rg[6] file rg_poly.out
+
+# -------------------------
+# Surface measurements
+# -------------------------
+
+fix surface all ave/time 1 5 5 c_ncont c_com[3] c_zmin c_zmax file surface.out
+
+# Instantaneous contact count every timestep
+fix events all ave/time 1 1 1 c_ncont file events.out
+
+# -------------------------
+# Thermodynamic output
+# -------------------------
+
+thermo 1000
+thermo_style custom step temp ke pe ebond evdwl f_wlo f_whi
+
+# -------------------------
+# Save restart files
+# -------------------------
+
+restart ${rstfreq} restart.*
+
+# -------------------------
+# Run adsorption simulation
+# -------------------------
+
+print "Temperature: ${temp}"
+print "Timestep: ${dt}"
+print "Damping time: ${damp}"
+print "Langevin seed: ${langseed}"
+print "Adsorption steps: ${nsteps}"
+
+run ${nsteps}
+
+# -------------------------
+# Save final configuration
+# -------------------------
+
+write_restart final.restart
+write_data final.data
+
+print "Adsorption simulation complete."

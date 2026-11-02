@@ -1,0 +1,158 @@
+
+# Bulk polymer equilibration
+# Run from the trial's bulk/ directory:
+# lmp -in ../../../../0-scripts/init/equilibrate.in
+
+# -------------------------
+# Initialization
+# -------------------------
+
+units lj
+dimension 3
+boundary p p p
+atom_style full
+
+# -------------------------
+# Simulation parameters
+# -------------------------
+
+variable temp equal 1.0
+variable dt equal 0.005
+variable damp equal 0.5
+
+variable nsteps index 2000000
+variable velseed index 12345
+variable langseed index 252352
+
+variable dumpfreq equal 1000
+variable thermofreq equal 1000
+variable rstfreq equal 100000
+
+timestep ${dt}
+
+# -------------------------
+# Read initial polymer
+# -------------------------
+
+read_data data.data
+
+group poly type 1
+
+mass * 1.0
+
+# -------------------------
+# Intermolecular interactions
+# -------------------------
+
+variable rwca equal 1.12246204830937
+
+pair_style lj/cut ${rwca}
+pair_coeff * * 1.0 1.0 ${rwca}
+pair_modify shift yes
+
+# -------------------------
+# Bond interactions
+# -------------------------
+
+bond_style harmonic
+bond_coeff 1 30.0 1.0
+
+# Exclude LJ interactions between directly bonded beads
+# Retain full LJ interactions for all other pairs
+special_bonds lj 0.0 1.0 1.0
+
+# -------------------------
+# Neighbor settings
+# -------------------------
+
+neighbor 0.5 bin
+neigh_modify every 1 delay 0 check yes
+
+comm_modify cutoff 2.0
+
+# -------------------------
+# Energy minimization
+# -------------------------
+
+thermo ${thermofreq}
+thermo_style custom step temp pe ke etotal ebond evdwl
+
+min_style cg
+minimize 1.0e-6 1.0e-8 10000 100000
+
+reset_timestep 0
+
+# -------------------------
+# Initial velocities
+# -------------------------
+
+velocity poly create ${temp} ${velseed} mom yes rot yes dist gaussian
+
+# -------------------------
+# Compute polymer properties
+# -------------------------
+
+compute T poly temp
+compute PE all pe
+
+# Radius of gyration squared
+compute rg poly gyration
+variable rg2 equal c_rg*c_rg
+
+# Identify first and last bead using atom IDs
+compute props all property/atom id xu yu zu
+
+compute firstx all reduce min c_props[1] c_props[2] replace 1 2
+compute firsty all reduce min c_props[1] c_props[3] replace 1 2
+compute firstz all reduce min c_props[1] c_props[4] replace 1 2
+
+compute lastx all reduce max c_props[1] c_props[2] replace 1 2
+compute lasty all reduce max c_props[1] c_props[3] replace 1 2
+compute lastz all reduce max c_props[1] c_props[4] replace 1 2
+
+# End-to-end distance squared
+variable re2 equal (c_firstx-c_lastx)^2+(c_firsty-c_lasty)^2+(c_firstz-c_lastz)^2
+
+# -------------------------
+# Output files
+# -------------------------
+
+dump traj poly custom ${dumpfreq} dump.atom id mol type q x y z ix iy iz vx vy vz
+dump_modify traj sort id
+
+fix properties all ave/time 1000 1 1000 c_T c_PE v_rg2 v_re2 file bulk.out
+
+# -------------------------
+# Dynamics
+# -------------------------
+
+fix integrator poly nve
+fix thermostat poly langevin ${temp} ${temp} ${damp} ${langseed}
+
+# Print simulation parameters
+print "Temperature: ${temp}"
+print "Timestep: ${dt}"
+print "Damping time: ${damp}"
+print "Velocity seed: ${velseed}"
+print "Langevin seed: ${langseed}"
+print "Equilibration steps: ${nsteps}"
+
+# Save periodic restart files
+restart ${rstfreq} restart.*
+
+# Run bulk equilibration
+run ${nsteps}
+
+# -------------------------
+# Save final configuration
+# -------------------------
+
+write_restart final.restart
+write_data final.data
+
+undump traj
+unfix properties
+unfix thermostat
+unfix integrator
+
+print "Bulk equilibration complete."
