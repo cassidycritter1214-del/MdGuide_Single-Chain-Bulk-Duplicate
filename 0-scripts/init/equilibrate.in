@@ -1,4 +1,4 @@
-# Bulk polymer equilibration
+# Bulk polymer equilibration, no walls yet!
 # Run from the trial's bulk/ directory:
 # lmp -in ../../../../0-scripts/init/equilibrate.in
 
@@ -8,7 +8,7 @@
 
 units lj
 dimension 3
-boundary p p p
+boundary p p p # no walls!
 atom_style full
 
 # -------------------------
@@ -19,13 +19,14 @@ variable temp equal 1.0
 variable dt equal 0.005
 variable damp equal 0.5
 
-variable nsteps index 2000000
+variable nsteps index 20000000
 variable velseed index 12345
 variable langseed index 252352
 
-variable dumpfreq equal 1000
-variable thermofreq equal 1000
-variable rstfreq equal 100000
+# when output data is taken, every --- steps
+variable dumpfreq equal 100000 # thermodynamic data
+variable thermofreq equal 1000000 # equilibriation trajectories
+variable rstfreq equal 1000000 # restart checkpoints
 
 timestep ${dt}
 
@@ -53,7 +54,7 @@ pair_modify shift yes
 # Bond interactions
 # -------------------------
 
-bond_style harmonic
+bond_style harmonic # harmonic bonds between beads
 bond_coeff 1 30.0 1.0
 
 # Exclude LJ interactions between directly bonded beads
@@ -64,8 +65,9 @@ special_bonds lj 0.0 1.0 1.0
 # Neighbor settings
 # -------------------------
 
-neighbor 0.5 bin
+neighbor 0.5 nsq
 neigh_modify every 1 delay 0 check yes
+atom_modify sort 0 0.0
 
 comm_modify cutoff 2.0
 
@@ -138,7 +140,7 @@ print "Langevin seed: ${langseed}"
 print "Equilibration steps: ${nsteps}"
 
 # Save periodic restart files
-restart ${rstfreq} restart.*
+restart ${rstfreq} restart1 restart2
 
 # Run bulk equilibration
 run ${nsteps}

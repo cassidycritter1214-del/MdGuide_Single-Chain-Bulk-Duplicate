@@ -1,0 +1,18 @@
+# Local editor and Python cache files
+.DS_Store
+.vscode/
+__pycache__/
+*.py[cod]
+
+# Generated LAMMPS outputs and checkpoints
+dump.atom
+dump_unwrapped.dcd
+events.out
+surface.out
+rg_poly.out
+log.lammps
+bulk.out
+final.data
+final.restart
+data[0-9]*.rst
+restart[0-9]*

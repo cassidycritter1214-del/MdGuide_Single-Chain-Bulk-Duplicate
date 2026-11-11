@@ -1,0 +1,11 @@
+N,t_hit,t_ads,tau_after,hit_observed,adsorption_observed,tau_observed,hit_observation_duration,adsorption_observation_duration,tau_observation_duration,observation_duration,repetition,events_file
+10,42594.305,42789.725,195.41999999999825,True,True,True,100000.0,100000.0,57405.695,100000.0,rep001,1-surface-runs/N10/rep001/adsorption/events.out
+10,42595.590000000004,42789.17,193.57999999999447,True,True,True,100000.0,100000.0,57404.409999999996,100000.0,rep002,1-surface-runs/N10/rep002/adsorption/events.out
+10,42595.15,42667.03,71.87999999999738,True,True,True,100000.0,100000.0,57404.85,100000.0,rep003,1-surface-runs/N10/rep003/adsorption/events.out
+10,42595.085,42789.14,194.0550000000003,True,True,True,100000.0,100000.0,57404.915,100000.0,rep004,1-surface-runs/N10/rep004/adsorption/events.out
+10,42595.335,42847.615,252.27999999999884,True,True,True,100000.0,100000.0,57404.665,100000.0,rep005,1-surface-runs/N10/rep005/adsorption/events.out
+10,42584.295,42708.62,124.32500000000437,True,True,True,100000.0,100000.0,57415.705,100000.0,rep006,1-surface-runs/N10/rep006/adsorption/events.out
+10,42594.885,42685.715000000004,90.83000000000175,True,True,True,100000.0,100000.0,57405.115,100000.0,rep007,1-surface-runs/N10/rep007/adsorption/events.out
+10,42616.200000000004,42715.9,99.69999999999709,True,True,True,100000.0,100000.0,57383.799999999996,100000.0,rep008,1-surface-runs/N10/rep008/adsorption/events.out
+10,42594.045,42789.53,195.48500000000058,True,True,True,100000.0,100000.0,57405.955,100000.0,rep009,1-surface-runs/N10/rep009/adsorption/events.out
+10,42581.270000000004,42683.53,102.25999999999476,True,True,True,100000.0,100000.0,57418.729999999996,100000.0,rep010,1-surface-runs/N10/rep010/adsorption/events.out

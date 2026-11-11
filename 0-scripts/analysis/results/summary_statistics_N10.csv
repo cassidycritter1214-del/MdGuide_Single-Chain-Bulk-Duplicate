@@ -1,0 +1,2 @@
+N,number_of_trials,t_hit_observed,t_hit_censored,t_hit_mean,t_ads_observed,t_ads_censored,t_ads_mean,tau_after_observed,tau_after_censored,tau_after_mean
+10,10,10,0,42594.616,10,0,42746.59750000001,10,0,151.9814999999988

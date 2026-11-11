@@ -1,126 +1,211 @@
+
 #!/usr/bin/env python3
+
+import argparse
 import os
+import shutil
 import subprocess
 import sys
-import shutil
-import argparse
 from pathlib import Path
 
+
 def run_cmd(cmd, cwd=None):
-    """Run a shell command and check for errors."""
-    print(f"Running: {' '.join(cmd) if isinstance(cmd, list) else cmd}")
-    result = subprocess.run(cmd, cwd=cwd, shell=isinstance(cmd, str))
+    """Run a command and report whether it succeeded."""
+    print(f"\nRunning: {' '.join(map(str, cmd))}")
+
+    result = subprocess.run(cmd, cwd=cwd)
+
     if result.returncode != 0:
-        print(f"Error: Command failed with exit code {result.returncode}")
+        print(f"ERROR: Command failed with exit code {result.returncode}")
         return False
+
     return True
 
+
+def find_lammps(project_dir):
+    """Find the LAMMPS executable."""
+    local_lmp = project_dir / "0-software" / "lmp"
+
+    if local_lmp.exists():
+        return str(local_lmp)
+
+    system_lmp = shutil.which("lmp")
+
+    if system_lmp:
+        return system_lmp
+
+    raise FileNotFoundError(
+        "Could not find LAMMPS. Make sure the polymer conda environment is active."
+    )
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Run polymer bulk equilibration and adsorption experiment pipeline.")
-    parser.add_argument("--chain-lengths", type=int, nargs="+", default=[10, 20, 50], help="List of chain lengths (N)")
-    parser.add_argument("--repetitions", type=int, default=3, help="Number of repetitions per chain length")
-    parser.add_argument("--lx", type=float, default=20.0, help="Box length X")
-    parser.add_argument("--ly", type=float, default=20.0, help="Box length Y")
-    parser.add_argument("--lz", type=float, default=40.0, help="Box length Z")
+    parser = argparse.ArgumentParser(
+        description="Run polymer bulk equilibration or adsorption."
+    )
+
+    parser.add_argument(
+        "--stage",
+        choices=["bulk", "adsorption"],
+        required=True,
+        help="Which simulation stage to run."
+    )
+
+    parser.add_argument(
+        "--chain-lengths",
+        type=int,
+        nargs="+",
+        default=[10, 20, 50, 100, 200]
+    )
+
+    parser.add_argument(
+        "--repetitions",
+        type=int,
+        default=1
+    )
+
+    parser.add_argument("--lx", type=float, default=20.0)
+    parser.add_argument("--ly", type=float, default=20.0)
+    parser.add_argument("--lz", type=float, default=40.0)
+
+    # so i can control timesteps from init_run.sh
+    parser.add_argument("--bulk-steps", type=int, default=20000000)
+    parser.add_argument("--adsorption-steps", type=int, default=20000000)
     args = parser.parse_args()
 
-    # Define project paths
+    # Locate project directories
     script_dir = Path(__file__).resolve().parent
     project_dir = script_dir.parent.parent
     runs_dir = project_dir / "1-surface-runs"
+
     runs_dir.mkdir(parents=True, exist_ok=True)
 
-    # Check local folder first, then check active conda environment / system path
-    lmp_exec = project_dir / "0-software" / "lmp"
-    if not lmp_exec.exists():
-        system_lmp = shutil.which("lmp")
-        if system_lmp:
-            lmp_exec = Path(system_lmp)
-        else:
-            # Fallback string if neither exists
-            lmp_exec = "lmp"
+    # Locate simulation programs and input files
+    lmp_exec = find_lammps(project_dir)
 
-    init_polymer_script = script_dir / "init_polymer.py"
-    equilibrate_script = script_dir / "equilibrate.in"
-    polymer_script = script_dir / "polymer.in"
+    init_script = script_dir / "init_polymer.py"
+    bulk_script = script_dir / "equilibrate.in"
+    adsorption_script = script_dir / "polymer.in"
 
     base_velocity_seed = 12345
 
+    failures = 0
+    jobs = []
+
     for n in args.chain_lengths:
         n_dir = runs_dir / f"N{n}"
-        n_dir.mkdir(exist_ok=True)
+        n_dir.mkdir(parents=True, exist_ok=True)
 
-        for rep in range(1, args.repetitions + 1):
+        # Bulk creates new repetitions after the highest existing rep###.
+        # Adsorption uses the matching existing bulk repetition numbers.
+        if args.stage == "bulk":
+            existing_reps = [
+                int(path.name[3:])
+                for path in n_dir.glob("rep[0-9][0-9][0-9]")
+                if path.is_dir()
+            ]
+            first_rep = max(existing_reps, default=0) + 1
+        else:
+            first_rep = 1
+
+        for rep in range(first_rep, first_rep + args.repetitions):
             rep_name = f"rep{rep:03d}"
             rep_dir = n_dir / rep_name
-            
             bulk_dir = rep_dir / "bulk"
             ads_dir = rep_dir / "adsorption"
-
-            if rep_dir.exists():
-                print(f"Skipping existing trial directory: {rep_dir} (Refusing to overwrite)")
-                continue
-
-            print(f"\n==========================================")
-            print(f"Starting N={n}, Repetition {rep_name}")
-            print(f"==========================================")
-
-            bulk_dir.mkdir(parents=True, exist_ok=True)
-            ads_dir.mkdir(parents=True, exist_ok=True)
-
-            # Unique velocity seed for each trial
             vel_seed = base_velocity_seed + n * 1000 + rep * 17
 
-            # 1. Generate initial polymer chain in bulk/data.data
-            data_file = bulk_dir / "data.data"
-            gen_cmd = [
-                sys.executable, str(init_polymer_script),
-                "--monomers-per-chain", str(n),
-                "--lx", str(args.lx),
-                "--ly", str(args.ly),
-                "--lz", str(args.lz),
-                "--output", str(data_file),
-                "--seed", str(vel_seed)
-            ]
-            if not run_cmd(gen_cmd):
-                print(f"Failed generating polymer for N={n}, {rep_name}")
-                continue
+            print(
+                f"Preparing {args.stage}: N={n}, {rep_name}",
+                flush=True,
+            )
 
-            # Copy input scripts into trial subdirectories for self-contained execution
-            shutil.copy(equilibrate_script, bulk_dir / "equilibrate.in")
-            shutil.copy(polymer_script, ads_dir / "polymer.in")
+            if args.stage == "bulk":
+                if (bulk_dir / "final.data").exists():
+                    print(f"Skipping N={n}, {rep_name}: bulk/final.data already exists.")
+                    continue
 
-            # Modify or pass velocity seed to equilibrate.in if needed, 
-            # or rely on LAMMPS variable indexing. Here we can pass `-var velseed <seed>` via command line.
-            # 2. Run Bulk Equilibration
-            print(f"Running bulk equilibration for N={n}, {rep_name}...")
-            eq_cmd = [
-                str(lmp_exec),
-                "-var", "velseed", str(vel_seed),
-                "-in", "equilibrate.in"
-            ]
-            if not run_cmd(eq_cmd, cwd=bulk_dir):
-                print(f"Bulk equilibration crashed for N={n}, {rep_name}")
-                continue
+                bulk_dir.mkdir(parents=True, exist_ok=True)
+                ads_dir.mkdir(parents=True, exist_ok=True)
+                data_file = bulk_dir / "data.data"
 
-            # Check if final.data exists
-            if not (bulk_dir / "final.data").exists():
-                print(f"Error: Bulk final.data not found for N={n}, {rep_name}. Equilibration may have failed.")
-                continue
+                if not data_file.exists():
+                    gen_cmd = [
+                        sys.executable, str(init_script),
+                        "--monomers-per-chain", str(n),
+                        "--lx", str(args.lx), "--ly", str(args.ly),
+                        "--lz", str(args.lz), "--output", str(data_file),
+                        "--seed", str(vel_seed),
+                    ]
+                    if not run_cmd(gen_cmd):
+                        failures += 1
+                        continue
+                else:
+                    print(f"Using existing {data_file}.")
 
-            # 3. Run Adsorption Simulation
-            print(f"Running adsorption simulation for N={n}, {rep_name}...")
-            ads_cmd = [
-                str(lmp_exec),
-                "-in", "polymer.in"
-            ]
-            if not run_cmd(ads_cmd, cwd=ads_dir):
-                print(f"Adsorption simulation crashed or exited early for N={n}, {rep_name}")
-                continue
+                shutil.copy(bulk_script, bulk_dir / "equilibrate.in")
+                cmd = [
+                    lmp_exec,
+                    "-var", "velseed", str(vel_seed),
+                    "-var", "nsteps", str(args.bulk_steps),
+                    "-in", "equilibrate.in",
+                ]
+                jobs.append((n, rep_name, bulk_dir, cmd, bulk_dir / "final.data"))
 
-            print(f"Successfully completed N={n}, {rep_name}!")
+            else:
+                final_data = bulk_dir / "final.data"
+                if not final_data.exists():
+                    print(
+                        f"Skipping N={n}, {rep_name}: bulk/final.data does not exist. "
+                        "Run bulk equilibration first."
+                    )
+                    failures += 1
+                    continue
 
-    print("\nAll scheduled experiment runs completed.")
+                ads_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy(adsorption_script, ads_dir / "polymer.in")
+                cmd = [
+                    lmp_exec,
+                    "-var", "nsteps", str(args.adsorption_steps),
+                    "-in", "polymer.in",
+                ]
+                jobs.append((n, rep_name, ads_dir, cmd, None))
+
+    # Launch every prepared simulation before waiting, with one process and
+    # one OpenMP thread per run.
+    run_env = os.environ.copy()
+    run_env["OMP_NUM_THREADS"] = "1"
+    running_jobs = []
+    for n, rep_name, cwd, cmd, expected_output in jobs:
+        print(f"Launching N={n}, {rep_name}: {' '.join(cmd)}", flush=True)
+        try:
+            process = subprocess.Popen(cmd, cwd=cwd, env=run_env)
+            running_jobs.append((n, rep_name, process, expected_output))
+        except OSError as exc:
+            print(f"Failed to launch N={n}, {rep_name}: {exc}", file=sys.stderr)
+            failures += 1
+
+    for n, rep_name, process, expected_output in running_jobs:
+        return_code = process.wait()
+        if return_code != 0:
+            print(f"Run failed: N={n}, {rep_name} (exit code {return_code}).")
+            failures += 1
+        elif expected_output and not expected_output.exists():
+            print(f"Run ended without creating {expected_output}.")
+            failures += 1
+        else:
+            print(f"Run completed: N={n}, {rep_name}.")
+
+    print("\n==========================================")
+    print(f"Finished {args.stage} stage.")
+
+    if failures:
+        print(f"Number of failed or skipped runs: {failures}")
+        sys.exit(1)
+
+    print("All requested runs completed successfully.")
+    print("==========================================")
+
 
 if __name__ == "__main__":
     main()

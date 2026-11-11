@@ -15,8 +15,8 @@ def generate_lammps_data(Lx, Ly, Lz, num_chains, monomers_per_chain, output_file
     bonds = []
 
     # CHANGED: Replace stay_within_box with periodic wrapping and image flags
-    def wrap_position(x, y, z):
-        ix = math.floor(x / Lx)
+    def wrap_position(x, y, z): # will now allow for set box dimensions
+        ix = math.floor(x / Lx) # what number box is it in?
         iy = math.floor(y / Ly)
         iz = math.floor(z / Lz)
 
@@ -30,7 +30,7 @@ def generate_lammps_data(Lx, Ly, Lz, num_chains, monomers_per_chain, output_file
     total_bonds = total_atoms - num_chains
 
     for chain_id in range(1, num_chains + 1):
-        x, y, z = [random.uniform(0, L) for L in (Lx, Ly, Lz)]  # CHANGED
+        x, y, z = [random.uniform(0, L) for L in (Lx, Ly, Lz)]  # Changed to allow set box dimensions
         prev_x, prev_y, prev_z = x, y, z
 
         for monomer_id in range(1, monomers_per_chain + 1):

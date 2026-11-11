@@ -8,7 +8,7 @@
 
 units lj
 dimension 3
-boundary p p p
+boundary p p p # start off with no walls
 atom_style full
 
 # -------------------------
@@ -19,16 +19,21 @@ variable temp equal 1.0
 variable dt equal 0.005
 variable damp equal 0.5
 
-variable nsteps index 2000000
+variable nsteps index 20000000
 variable langseed index 252352
 
-variable dumpfreq equal 1000
-variable rstfreq equal 100000
+variable dumpfreq equal 100000 # how often a video frame is captured
+variable rstfreq equal  100000
 
 variable zads equal 1.5
 variable rwca equal 1.12246204830937
 
 timestep ${dt}
+
+# Define interaction styles before reading data --> possible fix to why adsoprtion never
+# ran after bulk equilibriation
+pair_style lj/cut ${rwca}
+bond_style harmonic
 
 # -------------------------
 # Read equilibrated polymer
@@ -46,26 +51,28 @@ reset_timestep 0
 # Polymer interactions
 # -------------------------
 
-pair_style lj/cut ${rwca}
 pair_coeff * * 1.0 1.0 ${rwca}
 pair_modify shift yes
 
-bond_style harmonic
 bond_coeff 1 30.0 1.0
 
 # Exclude LJ interactions between directly bonded beads
 special_bonds lj 0.0 1.0 1.0
 
-neighbor 0.5 bin
+neighbor 0.5 nsq
 neigh_modify every 1 delay 0 check yes
+atom_modify sort 0 0.0
+
 comm_modify cutoff 2.0
 
 # -------------------------
 # Center polymer in simulation box
 # -------------------------
 
+# !!! this centers polymer in middle of sim box, so starts at z=20 that is very far away
+# when adsoprtion was run for N=10, it never adsorbed!
 compute com poly com
-
+run 0
 variable dx equal 0.5*(xlo+xhi)-c_com[1]
 variable dy equal 0.5*(ylo+yhi)-c_com[2]
 variable dz equal 0.5*(zlo+zhi)-c_com[3]
@@ -82,7 +89,9 @@ compute zmax poly reduce max c_zpos
 
 run 0
 
-variable zlimlo equal max(2.5,v_zads)
+# next line is alternative to "variable zlimlo equal max(2.5,v_zads)", since max
+# function is unsupported
+variable zlimlo equal (v_zads > 2.5)*v_zads + (v_zads <= 2.5)*2.5
 variable zlimhi equal lz-v_rwca
 
 print "Minimum polymer z: $(c_zmin)"
@@ -95,7 +104,7 @@ if "$(c_zmax) >= ${zlimhi}" then "quit 1"
 # Introduce surface boundaries
 # -------------------------
 
-change_box all boundary p p f
+change_box all boundary p p f # add upper and low wall
 
 # Lower attractive wall
 fix wlo poly wall/lj126 zlo EDGE 1.0 1.0 2.5
@@ -144,21 +153,23 @@ fix rgout all ave/time 1 5 5 c_rg c_rg[1] c_rg[2] c_rg[3] c_rg[4] c_rg[5] c_rg[6
 
 fix surface all ave/time 1 5 5 c_ncont c_com[3] c_zmin c_zmax file surface.out
 
-# Instantaneous contact count every timestep
+# Instantaneous contact count every adsorption timestep
 fix events all ave/time 1 1 1 c_ncont file events.out
+# see if polymer adsorbs every 10,000 timesteps, not every single timestep
+# to reduce run time
 
 # -------------------------
 # Thermodynamic output
 # -------------------------
 
-thermo 1000
+thermo 1000000
 thermo_style custom step temp ke pe ebond evdwl f_wlo f_whi
 
 # -------------------------
 # Save restart files
 # -------------------------
 
-restart ${rstfreq} restart.*
+restart ${rstfreq} data1.rst data2.rst
 
 # -------------------------
 # Run adsorption simulation
@@ -176,7 +187,6 @@ run ${nsteps}
 # Save final configuration
 # -------------------------
 
-write_restart final.restart
 write_data final.data
 
 print "Adsorption simulation complete."
