@@ -1,5 +1,4 @@
-
-# Bulk polymer equilibration
+# Bulk polymer equilibration, no walls yet!
 # Run from the trial's bulk/ directory:
 # lmp -in ../../../../0-scripts/init/equilibrate.in
 
@@ -9,24 +8,25 @@
 
 units lj
 dimension 3
-boundary p p p
+boundary p p p # no walls!
 atom_style full
 
 # -------------------------
 # Simulation parameters
 # -------------------------
 
-variable temp equal 1.0
+variable temp equal 1.0 
 variable dt equal 0.005
-variable damp equal 0.5
+variable damp equal 0.5 
 
-variable nsteps index 2000000
-variable velseed index 12345
-variable langseed index 252352
+variable nsteps index 20000000
+variable velseed index 12345 
+variable langseed index 252352 
 
-variable dumpfreq equal 1000
-variable thermofreq equal 1000
-variable rstfreq equal 100000
+# when output data is taken, every --- steps
+variable dumpfreq equal 100000 # thermodynamic data
+variable thermofreq equal 1000000 # equilibriation trajectories
+variable rstfreq equal 1000000 # restart checkpoints
 
 timestep ${dt}
 
@@ -34,11 +34,11 @@ timestep ${dt}
 # Read initial polymer
 # -------------------------
 
-read_data data.data
+read_data data.data 
 
-group poly type 1
+group poly type 1 
 
-mass * 1.0
+mass * 1.0 
 
 # -------------------------
 # Intermolecular interactions
@@ -46,20 +46,20 @@ mass * 1.0
 
 variable rwca equal 1.12246204830937
 
-pair_style lj/cut ${rwca}
-pair_coeff * * 1.0 1.0 ${rwca}
-pair_modify shift yes
+pair_style lj/cut ${rwca} 
+pair_coeff * * 1.0 1.0 ${rwca} 
+pair_modify shift yes 
 
 # -------------------------
 # Bond interactions
 # -------------------------
 
-bond_style harmonic
-bond_coeff 1 30.0 1.0
+bond_style harmonic # harmonic bonds between beads
+bond_coeff 1 30.0 1.0 
 
 # Exclude LJ interactions between directly bonded beads
 # Retain full LJ interactions for all other pairs
-special_bonds lj 0.0 1.0 1.0
+special_bonds lj 0.0 1.0 1.0 
 
 # -------------------------
 # Neighbor settings
@@ -99,19 +99,20 @@ compute PE all pe
 compute rg poly gyration
 variable rg2 equal c_rg*c_rg
 
-# Identify first and last bead using atom IDs
 compute props all property/atom id xu yu zu
 
-compute firstx all reduce min c_props[1] c_props[2] replace 1 2
-compute firsty all reduce min c_props[1] c_props[3] replace 1 2
-compute firstz all reduce min c_props[1] c_props[4] replace 1 2
+# Coordinates of the first atom (lowest atom ID)
+compute firstx all reduce min c_props[2] c_props[1] replace 1 2
+compute firsty all reduce min c_props[3] c_props[1] replace 1 2
+compute firstz all reduce min c_props[4] c_props[1] replace 1 2
 
-compute lastx all reduce max c_props[1] c_props[2] replace 1 2
-compute lasty all reduce max c_props[1] c_props[3] replace 1 2
-compute lastz all reduce max c_props[1] c_props[4] replace 1 2
+# Coordinates of the last atom (highest atom ID)
+compute lastx all reduce max c_props[2] c_props[1] replace 1 2
+compute lasty all reduce max c_props[3] c_props[1] replace 1 2
+compute lastz all reduce max c_props[4] c_props[1] replace 1 2
 
-# End-to-end distance squared
-variable re2 equal (c_firstx-c_lastx)^2+(c_firsty-c_lasty)^2+(c_firstz-c_lastz)^2
+# Squared end-to-end distance
+variable re2 equal (c_firstx[1]-c_lastx[1])^2+(c_firsty[1]-c_lasty[1])^2+(c_firstz[1]-c_lastz[1])^2
 
 # -------------------------
 # Output files
@@ -138,7 +139,7 @@ print "Langevin seed: ${langseed}"
 print "Equilibration steps: ${nsteps}"
 
 # Save periodic restart files
-restart ${rstfreq} restart.*
+restart ${rstfreq} restart1 restart2
 
 # Run bulk equilibration
 run ${nsteps}
